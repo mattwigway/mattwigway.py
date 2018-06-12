@@ -12,11 +12,20 @@ def _intersectingFractions (target_geom, source_geoms, sindex):
     # weights are the fraction of area of a source geom that is within the target geom
     # geoms are already projected to an equal area projection
     out[relevantSourceGeoms] = source_geoms.iloc[relevantSourceGeoms]\
-        .intersection(target_geom).area / source_geoms[relevantSourceGeoms].area
+        .intersection(target_geom).area / source_geoms.iloc[relevantSourceGeoms].area
     return out
 
-def weighted_overlay (source_geoms, target_geoms, weights, vals, quiet=False, tqdm=tqdm):
-    "vals should be a data frame with all values to aggregate"
+def weighted_overlay (source_geoms, target_geoms, weights, vals, quiet=False, tqdm=tqdm, scaleInvariantVariables=True):
+    """
+    vals should be a data frame with all values to aggregate. If scaleInvariantVariables is False, a weighted sum rather than average will be returned.
+    This is useful for variables that vary with area. For instance, half of a census block would be expected to have
+    roughly the same population density as the full block---population density is a scale invariant variable.
+    However, you would expect half a census block to have half the total population of the full Census block; this is a scale-variant variable.
+    By passing scaleInvariantVariables=False, it will be treated correctly, and partially overlapping areas will be scaled accordingly.
+    """
+    if weights is None:
+        weights = np.ones(len(vals))
+
     def log (*args, **kwargs):
         if not quiet:
             print(*args, **kwargs)
@@ -37,7 +46,8 @@ def weighted_overlay (source_geoms, target_geoms, weights, vals, quiet=False, tq
     for idx, target_geom in it:
         frac = _intersectingFractions(target_geom, source_geoms, sindex)
         targetWeights = weights * frac
-        targetWeights /= np.sum(targetWeights)
+        if scaleInvariantVariables:
+            targetWeights /= np.sum(targetWeights)
         for col in vals.columns:
             out.loc[idx, col] = np.sum(vals[col] * targetWeights)
 
